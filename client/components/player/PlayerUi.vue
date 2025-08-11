@@ -2,6 +2,14 @@
   <div class="w-full -mt-6">
     <div class="w-full relative mb-1">
       <div class="absolute -top-10 lg:top-0 right-0 lg:right-2 flex items-center h-full">
+
+        <ui-tooltip direction="bottom" :text="$strings.LabelUseChapterTrack">
+          <div class="flex items-center">
+            <ui-toggle-switch v-model="useChapterTrack" :aria-label="$strings.LabelUseChapterTrack" />
+          </div>
+        </ui-tooltip>
+
+
         <controls-playback-speed-control v-model="playbackRate" @input="setPlaybackRate" @change="playbackRateChanged" :playbackRateIncrementDecrement="playbackRateIncrementDecrement" class="mx-2 block" />
 
         <ui-tooltip direction="bottom" :text="$strings.LabelVolume">
@@ -93,6 +101,7 @@ export default {
   },
   data() {
     return {
+      useChapterTrack: false,
       volume: 1,
       playbackRate: 1,
       audioEl: null,
@@ -107,10 +116,13 @@ export default {
     playbackRate() {
       this.updateTimestamp()
     },
-    useChapterTrack() {
-      if (this.$refs.trackbar) this.$refs.trackbar.setUseChapterTrack(this.useChapterTrack)
-      this.updateTimestamp()
+    useChapterTrack(newVal) {
+    if (this.$refs.trackbar) {
+      this.$refs.trackbar.setUseChapterTrack(newVal)
     }
+    this.$store.dispatch('user/updateUserSettings', { useChapterTrack: newVal })
+    this.updateTimestamp()
+  }
   },
   computed: {
     sleepTimerRemainingString() {
@@ -174,10 +186,7 @@ export default {
     playerQueueItems() {
       return this.$store.state.playerQueueItems || []
     },
-    useChapterTrack() {
-      const _useChapterTrack = this.$store.getters['user/getUserSetting']('useChapterTrack') || false
-      return this.chapters.length ? _useChapterTrack : false
-    },
+
     playbackRateIncrementDecrement() {
       return this.$store.getters['user/getUserSetting']('playbackRateIncrementDecrement')
     }
@@ -323,6 +332,8 @@ export default {
     },
     init() {
       this.playbackRate = this.$store.getters['user/getUserSetting']('playbackRate') || 1
+
+      this.useChapterTrack = this.$store.getters['user/getUserSetting']('useChapterTrack') || false
 
       if (this.$refs.trackbar) this.$refs.trackbar.setUseChapterTrack(this.useChapterTrack)
       this.setPlaybackRate(this.playbackRate)

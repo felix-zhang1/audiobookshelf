@@ -2,12 +2,12 @@
   <modals-modal v-model="show" name="player-settings" :width="500" :height="'unset'">
     <div ref="container" class="w-full rounded-lg bg-bg box-shadow-md overflow-y-auto overflow-x-hidden p-4" style="max-height: 80vh; min-height: 40vh">
       <h3 class="text-xl font-semibold mb-8">{{ $strings.HeaderPlayerSettings }}</h3>
-      <div class="flex items-center mb-4">
+      <!-- <div class="flex items-center mb-4">
         <ui-toggle-switch v-model="useChapterTrack" @input="setUseChapterTrack" />
         <div class="pl-4">
           <span>{{ $strings.LabelUseChapterTrack }}</span>
         </div>
-      </div>
+      </div> -->
       <div class="flex items-center mb-4">
         <ui-select-input v-model="jumpForwardAmount" :label="$strings.LabelJumpForwardAmount" menuMaxHeight="250px" :items="jumpValues" @input="setJumpForwardAmount" />
       </div>
