@@ -16,6 +16,10 @@
 
       <div v-show="selectedTab !== 'tools'" class="absolute bottom-0 left-0 w-full px-4 py-4 border-t border-white/10">
         <div class="flex justify-end">
+          <button class="rounded border border-red-500 bg-gray-700 text-white hover:bg-gray-600" @click="show = false">{{ $strings?.ButtonCancel || 'Cancel' }}</button>
+
+          <ui-btn @click="show = false">{{ $strings?.ButtonCancel || 'Cancel' }}</ui-btn>
+
           <ui-btn @click="submit">{{ buttonText }}</ui-btn>
         </div>
       </div>

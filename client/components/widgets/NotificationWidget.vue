@@ -62,6 +62,7 @@ export default {
     tasksToShow() {
       // return just the tasks that are running or failed (or show success) in the last 1 minute
       const tasks = this.tasks.filter((t) => !t.isFinished || ((t.isFailed || t.showSuccess) && t.finishedAt > new Date().getTime() - 1000 * 60)) || []
+      console.log('Tasks:', tasks)
       return tasks.sort((a, b) => b.startedAt - a.startedAt)
     },
     showUnseenSuccessIndicator() {
