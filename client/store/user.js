@@ -18,7 +18,11 @@ export const state = () => ({
     authorSortBy: 'name',
     authorSortDesc: false,
     jumpForwardAmount: 10,
-    jumpBackwardAmount: 10
+    jumpBackwardAmount: 10,
+
+    // 新增：自动回退设置（默认开启、10秒）
+    autoRewindEnabled: true,
+    autoRewindSeconds: 10
   }
 })
 

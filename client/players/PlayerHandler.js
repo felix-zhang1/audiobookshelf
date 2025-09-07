@@ -51,6 +51,27 @@ export default class PlayerHandler {
     return this.ctx.$store.getters['user/getUserSetting']('jumpBackwardAmount')
   }
 
+  /**
+   * get the auto-rewind setting.
+   * - if the value is undefined, return true (default: true).
+   * - otherwise, return !!v to ensure the result is always boolean.
+   */
+  get autoRewindEnabled() {
+    const v = this.ctx.$store.getters['user/getUserSetting']('autoRewindEnabled')
+
+    return v === undefined ? true : !!v
+  }
+
+  /**
+   * get the auto-rewind seconds setting.
+   * - if v is a finite number, return Number(v).
+   * - otherwise return 10 (default: 10 seconds).
+   */
+  get autoRewindSeconds() {
+    const v = this.ctx.$store.getters['user/getUserSetting']('autoRewindSeconds')
+    return Number.isFinite(v) ? Number(v) : 10
+  }
+
   setSessionId(sessionId) {
     this.currentSessionId = sessionId
     this.ctx.$store.commit('setPlaybackSessionId', sessionId)
@@ -338,12 +359,57 @@ export default class PlayerHandler {
     this.playInterval = null
   }
 
+  // playPause() {
+  //   if (this.player) this.player.playPause()
+  // }
+
+  /**
+   * toggle play/pause.
+   * - if not playing: auto-rewind, then start playback.
+   * - if already playing: pause playback.
+   */
   playPause() {
-    if (this.player) this.player.playPause()
+    if (!this.player) return
+
+    if (!this.playerPlaying) {
+      if (this.autoRewindEnabled) {
+        const ct = this.getCurrentTime() || 0
+        const chapterStart = this.ctx.currentChapter && this.ctx.currentChapter.start ? this.ctx.currentChapter.start : 0
+        const target = Math.max(chapterStart, ct - Math.max(0, this.autoRewindSeconds))
+
+        if (target < ct) {
+          this.seek(target) // the same method with "jumpBackward"
+        }
+      }
+      this.player.play()
+      return
+    }
+
+    this.player.pause()
   }
 
+  // play() {
+  //   if (this.player) this.player.play()
+  // }
+
+  /**
+   * - if not playing: auto-rewind, then start playback.
+   * - if already playing: call play() again (no toggle to pause).
+   */
   play() {
-    if (this.player) this.player.play()
+    if (!this.player) return
+    if (!this.playerPlaying) {
+      if (this.autoRewindEnabled) {
+        const ct = this.getCurrentTime() || 0
+        const chapterStart = this.ctx.currentChapter && this.ctx.currentChapter.start ? this.ctx.currentChapter.start : 0
+        const target = Math.max(chapterStart, ct - Math.max(0, this.autoRewindSeconds))
+
+        if (target < ct) {
+          this.seek(target)
+        }
+      }
+    }
+    this.player.play()
   }
 
   pause() {
