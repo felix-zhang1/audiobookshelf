@@ -14,6 +14,20 @@
       <div class="flex items-center mb-4">
         <ui-select-input v-model="jumpBackwardAmount" :label="$strings.LabelJumpBackwardAmount" menuMaxHeight="250px" :items="jumpValues" @input="setJumpBackwardAmount" />
       </div>
+
+      <!-- 新增：自动 rewind 开关 -->
+      <div class="flex items-center mb-2">
+        <ui-toggle-switch v-model="autoRewindEnabled" @input="setAutoRewindEnabled" />
+        <div class="pl-4">
+          <span>{{ $strings.LabelEnableAutoRewind || 'Enable automatic rewind' }}</span>
+        </div>
+      </div>
+
+      <!-- 新增：自动 rewind 时间（与 jumpValues 一致），可被上面的开关禁用 -->
+      <div class="flex items-center mb-4">
+        <ui-select-input v-model="autoRewindSeconds" :label="$strings.LabelAutoRewindSeconds || 'Automatic rewind time'" menuMaxHeight="250px" :items="jumpValues" :disabled="!autoRewindEnabled" @input="setAutoRewindSeconds" />
+      </div>
+
       <div class="flex items-center mb-4">
         <ui-select-input v-model="playbackRateIncrementDecrement" :label="$strings.LabelPlaybackRateIncrementDecrement" menuMaxHeight="250px" :items="playbackRateIncrementDecrementValues" @input="setPlaybackRateIncrementDecrementAmount" />
       </div>
@@ -39,6 +53,11 @@ export default {
       ],
       jumpForwardAmount: 10,
       jumpBackwardAmount: 10,
+
+      // 新增本地状态：与 Vuex 双向同步
+      autoRewindEnabled: true,
+      autoRewindSeconds: 10,
+
       playbackRateIncrementDecrementValues: [0.1, 0.05],
       playbackRateIncrementDecrement: 0.1
     }
@@ -69,11 +88,26 @@ export default {
       this.playbackRateIncrementDecrement = val
       this.$store.dispatch('user/updateUserSettings', { playbackRateIncrementDecrement: val })
     },
+
+    // 新增
+    setAutoRewindEnabled(val) {
+      this.autoRewindEnabled = !!val
+      this.$store.dispatch('user/updateUserSettings', { autoRewindEnabled: this.autoRewindEnabled })
+    },
+    setAutoRewindSeconds(val) {
+      this.autoRewindSeconds = Number(val)
+      this.$store.dispatch('user/updateUserSettings', { autoRewindSeconds: this.autoRewindSeconds })
+    },
+
     settingsUpdated() {
       this.useChapterTrack = this.$store.getters['user/getUserSetting']('useChapterTrack')
       this.jumpForwardAmount = this.$store.getters['user/getUserSetting']('jumpForwardAmount')
       this.jumpBackwardAmount = this.$store.getters['user/getUserSetting']('jumpBackwardAmount')
       this.playbackRateIncrementDecrement = this.$store.getters['user/getUserSetting']('playbackRateIncrementDecrement')
+
+      // 新增：从 Vuex 读取最新设置
+      this.autoRewindEnabled = this.$store.getters['user/getUserSetting']('autoRewindEnabled')
+      this.autoRewindSeconds = this.$store.getters['user/getUserSetting']('autoRewindSeconds')
     }
   },
   mounted() {
