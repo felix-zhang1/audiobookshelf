@@ -22,7 +22,18 @@ export const state = () => ({
 
     // 新增：自动回退设置（默认开启、10秒）
     autoRewindEnabled: true,
-    autoRewindSeconds: 10
+    autoRewindSeconds: 10,
+
+    // 新增：回退模式与智能回退参数
+    // rewindMode: 'fixed' | 'smart'
+    rewindMode: 'fixed',
+    // 智能回退：每满 smartRewindPerMinutes 分钟，回退 smartRewindStepSeconds 秒
+    smartRewindStepSeconds: 5, // 每步回退秒数（默认 5s）
+    smartRewindMaxSeconds: 60, // 单次最大回退秒数上限（默认 60s，可设 0 表示不封顶）
+
+    // smartRewindPerMinutes: 1, // 每多少分钟计算一次步长（默认每 1 分钟）
+
+    smartRewindTriggerSeconds: 5 // 每“停这么多秒”算一步（默认 5 秒）
   }
 })
 

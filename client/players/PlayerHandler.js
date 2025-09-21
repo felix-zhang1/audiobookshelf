@@ -23,6 +23,9 @@ export default class PlayerHandler {
     this.listeningTimeSinceSync = 0
 
     this.playInterval = null
+
+    //
+    this.pauseStartedAt = null
   }
 
   get isCasting() {
@@ -70,6 +73,50 @@ export default class PlayerHandler {
   get autoRewindSeconds() {
     const v = this.ctx.$store.getters['user/getUserSetting']('autoRewindSeconds')
     return Number.isFinite(v) ? Number(v) : 10
+  }
+
+  // 新增：模式/智能参数（均可通过 User Settings 配置）
+  get rewindMode() {
+    // 'fixed' 或 'smart'
+    const v = this.ctx.$store.getters['user/getUserSetting']('rewindMode')
+    return v === 'smart' ? 'smart' : 'fixed'
+  }
+  get smartRewindStepSeconds() {
+    const v = this.ctx.$store.getters['user/getUserSetting']('smartRewindStepSeconds')
+    return Number.isFinite(v) ? Number(v) : 5 // 默认每满1分钟回退5秒
+  }
+  get smartRewindMaxSeconds() {
+    const v = this.ctx.$store.getters['user/getUserSetting']('smartRewindMaxSeconds')
+    return Number.isFinite(v) ? Number(v) : 60 // 默认最多回退60秒，可自行调大/关闭上限
+  }
+  // get smartRewindPerMinutes() {
+  //   // 每满多少分钟加一次步长（通常=1）
+  //   const v = this.ctx.$store.getters['user/getUserSetting']('smartRewindPerMinutes')
+  //   return Number.isFinite(v) && v > 0 ? Number(v) : 1
+  // }
+  get smartRewindTriggerSeconds() {
+    // 每停这么多秒算“一步”
+    const v = this.ctx.$store.getters['user/getUserSetting']('smartRewindTriggerSeconds')
+    return Number.isFinite(v) && v > 0 ? Number(v) : 5
+  }
+
+  computeSmartRewindSeconds() {
+    if (!this.pauseStartedAt) return 0
+
+    // const elapsedMs = Date.now() - this.pauseStartedAt
+    // const minutes = Math.floor(elapsedMs / 60000)
+    // if (minutes < this.smartRewindPerMinutes) return 0
+    // const steps = Math.floor(minutes / this.smartRewindPerMinutes)
+    // const sec = steps * this.smartRewindStepSeconds
+
+    const elapsedMs = Date.now() - this.pauseStartedAt
+    const stepMs = this.smartRewindTriggerSeconds * 1000
+    // 选项 A：累计型（每满 5 秒 +5s）
+    const steps = Math.floor(elapsedMs / stepMs)
+    if (steps <= 0) return 0
+    const sec = steps * this.smartRewindStepSeconds
+
+    return Math.max(0, Math.min(sec, this.smartRewindMaxSeconds))
   }
 
   setSessionId(sessionId) {
@@ -374,18 +421,30 @@ export default class PlayerHandler {
     if (!this.playerPlaying) {
       if (this.autoRewindEnabled) {
         const ct = this.getCurrentTime() || 0
-        const chapterStart = this.ctx.currentChapter && this.ctx.currentChapter.start ? this.ctx.currentChapter.start : 0
-        const target = Math.max(chapterStart, ct - Math.max(0, this.autoRewindSeconds))
-
-        if (target < ct) {
-          this.seek(target) // the same method with "jumpBackward"
+        const chapterStart = this.ctx.currentChapter?.start ?? 0
+        let rewindSec = 0
+        if (this.rewindMode === 'smart') {
+          rewindSec = this.computeSmartRewindSeconds()
+        } else {
+          rewindSec = Math.max(0, this.autoRewindSeconds)
         }
+        if (rewindSec > 0) {
+          const EPS = 0.01
+          const target = Math.max(chapterStart + EPS, ct - rewindSec)
+          if (target < ct) this.seek(target)
+        }
+        // 播放前清空暂停起点，避免重复累计
+        this.pauseStartedAt = null
       }
+
       this.player.play()
       return
     }
 
-    this.player.pause()
+    // this.player.pause()
+
+    // 用封装方法，顺便记录 pauseStartedAt
+    this.pause()
   }
 
   // play() {
@@ -401,19 +460,30 @@ export default class PlayerHandler {
     if (!this.playerPlaying) {
       if (this.autoRewindEnabled) {
         const ct = this.getCurrentTime() || 0
-        const chapterStart = this.ctx.currentChapter && this.ctx.currentChapter.start ? this.ctx.currentChapter.start : 0
-        const target = Math.max(chapterStart, ct - Math.max(0, this.autoRewindSeconds))
-
-        if (target < ct) {
-          this.seek(target)
+        const chapterStart = this.ctx.currentChapter?.start ?? 0
+        let rewindSec = 0
+        if (this.rewindMode === 'smart') {
+          rewindSec = this.computeSmartRewindSeconds()
+        } else {
+          rewindSec = Math.max(0, this.autoRewindSeconds)
         }
+        if (rewindSec > 0) {
+          const EPS = 0.01
+          const target = Math.max(chapterStart + EPS, ct - rewindSec)
+          if (target < ct) this.seek(target)
+        }
+        this.pauseStartedAt = null
       }
     }
     this.player.play()
   }
 
   pause() {
-    if (this.player) this.player.pause()
+    if (this.player) {
+      this.player.pause()
+      // 记录暂停起点（仅在真正暂停时）
+      this.pauseStartedAt = Date.now()
+    }
   }
 
   getCurrentTime() {
