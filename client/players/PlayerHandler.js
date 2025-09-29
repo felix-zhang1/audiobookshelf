@@ -100,6 +100,22 @@ export default class PlayerHandler {
     return Number.isFinite(v) && v > 0 ? Number(v) : 5
   }
 
+  // 新增：章节边界与策略的相关设置
+  get clampToChapterStart() {
+    const v = this.ctx.$store.getters['user/getUserSetting']('clampToChapterStart')
+
+    // 如果用户没设置就取true,如果设置了就是用!!确保为对应的boolean值
+    return v === undefined ? true : !!v
+  }
+  get crossChapterRewindStrategy() {
+    const v = this.ctx.$store.getters['user/getUserSetting']('crossChapterRewindStrategy')
+    return ['fixed', 'nearest-boundary', 'prev-start', 'next-start'].includes(v) ? v : 'fixed'
+  }
+  get limitPresetToPrevTwoChapters() {
+    const v = this.ctx.$store.getters['user/getUserSetting']('limitPresetToPrevTwoChapters')
+    return v === undefined ? true : !!v
+  }
+
   computeSmartRewindSeconds() {
     if (!this.pauseStartedAt) return 0
 
@@ -117,6 +133,116 @@ export default class PlayerHandler {
     const sec = steps * this.smartRewindStepSeconds
 
     return Math.max(0, Math.min(sec, this.smartRewindMaxSeconds))
+  }
+
+  // 新增：章节工具函数
+  getChapters() {
+    // 章节数组元素期望至少有 { start, end }（秒）
+    // 优先级：episode.chapters => libraryItem.media.chapters => ctx.currentChapters
+    const ep = this.episode
+    if (ep?.chapters?.length) return ep.chapters
+    const mi = this.libraryItem?.media
+    if (mi?.chapters?.length) return mi.chapters
+    const ctxChapters = this.ctx.currentChapters || this.ctx.chapters
+    if (ctxChapters?.length) return ctxChapters
+    return []
+  }
+  findChapterIndexByTime(time) {
+    const chapters = this.getChapters()
+    if (!chapters.length) return -1
+    return chapters.findIndex((c, i) => {
+      const start = Number(c.start) || 0
+      const end = Number(c.end) || (i < chapters.length - 1 ? Number(chapters[i + 1].start) || Infinity : Infinity)
+
+      // 返回true或者false,用来判断当前时间是否位于当前章节
+      return time >= start && time < end
+    })
+  }
+  getChapterStart(i) {
+    const chapters = this.getChapters()
+    if (i < 0 || i >= chapters.length) return 0
+    return Number(chapters[i].start) || 0
+  }
+
+  /**
+   * 计算自动回退目标时间：
+   * 1. 若 clampToChapterStart=true → 固定到当前章节起点
+   * 2. 否则允许跨章：
+   *    - 先计算预定点 (ct - rewindSec)，可限制在前两章范围
+   *    - 再根据 crossChapterRewindStrategy：
+   *        'fixed' → 预定点
+   *        'nearest-boundary' → 距预定点最近的 {上一章起点, 当前章起点}
+   *        'prev-start' → 上一章起点
+   *        'next-start' → 当前章起点
+   */
+  computeAutoRewindTarget(ct, rewindSec) {
+    //ct: current time
+    const EPS = 0.01
+    const chapters = this.getChapters()
+    const currIdx = this.findChapterIndexByTime(ct)
+    const currStart = this.ctx.currentChapter?.start ?? (currIdx >= 0 ? this.getChapterStart(currIdx) : 0)
+
+    // 情况 A：不允许跨章 => 维持“最多到本章起点”
+    if (this.clampToChapterStart) {
+      const target = Math.max(currStart + EPS, ct - rewindSec)
+      return Math.max(0, Math.min(target, this.getDuration()))
+    }
+
+    // 情况 B：允许跨章
+    let preset = Math.max(0, ct - rewindSec) // 预定回跳时间点
+
+    if (this.limitPresetToPrevTwoChapters && chapters.length) {
+      // 计算“前两个章节区间”： [prev2.start, current.start)
+      const prevIdx = currIdx > 0 ? currIdx - 1 : -1
+      const prev2Idx = currIdx > 1 ? currIdx - 2 : -1
+      const windowStart = prev2Idx >= 0 ? this.getChapterStart(prev2Idx) : prevIdx >= 0 ? this.getChapterStart(prevIdx) : 0
+      const windowEnd = currStart
+      // 把 preset clamp 到该窗口内（右开区间做个 eps 处理）
+      if (windowEnd > windowStart) {
+        const right = Math.max(windowStart, Math.min(preset, windowEnd - EPS))
+        preset = right
+      } else {
+        // 若没有上一章，至少别超出 0~currStart
+        preset = Math.max(0, Math.min(preset, currStart - EPS))
+      }
+    }
+
+    // 依据策略给出最终目标
+    const prevStart = currIdx > 0 ? this.getChapterStart(currIdx - 1) : 0
+    const nextStart = currStart // 下一章起点
+
+    let finalTarget = preset
+
+    // 先判断是否真的跨章
+    const crossed = preset < currStart - EPS
+
+    switch (this.crossChapterRewindStrategy) {
+      case 'nearest-boundary': {
+        if (crossed) {
+          const dPrev = Math.abs(preset - prevStart)
+          const dNext = Math.abs(preset - nextStart)
+          finalTarget = dPrev <= dNext ? prevStart + EPS : nextStart + EPS
+        } else {
+          finalTarget = preset
+        }
+        break
+      }
+
+      case 'prev-start':
+        finalTarget = crossed ? prevStart + EPS : preset
+        break
+
+      case 'next-start':
+        finalTarget = crossed ? nextStart + EPS : preset
+        break
+
+      case 'fixed':
+      default:
+        // 保持 preset
+        break
+    }
+
+    return Math.max(0, Math.min(finalTarget, this.getDuration()))
   }
 
   setSessionId(sessionId) {
@@ -420,19 +546,27 @@ export default class PlayerHandler {
 
     if (!this.playerPlaying) {
       if (this.autoRewindEnabled) {
+        // const ct = this.getCurrentTime() || 0
+        // const chapterStart = this.ctx.currentChapter?.start ?? 0
+        // let rewindSec = 0
+        // if (this.rewindMode === 'smart') {
+        //   rewindSec = this.computeSmartRewindSeconds()
+        // } else {
+        //   rewindSec = Math.max(0, this.autoRewindSeconds)
+        // }
+        // if (rewindSec > 0) {
+        //   const EPS = 0.01
+        //   const target = Math.max(chapterStart + EPS, ct - rewindSec)
+        //   if (target < ct) this.seek(target)
+        // }
+
         const ct = this.getCurrentTime() || 0
-        const chapterStart = this.ctx.currentChapter?.start ?? 0
-        let rewindSec = 0
-        if (this.rewindMode === 'smart') {
-          rewindSec = this.computeSmartRewindSeconds()
-        } else {
-          rewindSec = Math.max(0, this.autoRewindSeconds)
-        }
+        const rewindSec = this.rewindMode === 'smart' ? this.computeSmartRewindSeconds() : Math.max(0, this.autoRewindSeconds)
         if (rewindSec > 0) {
-          const EPS = 0.01
-          const target = Math.max(chapterStart + EPS, ct - rewindSec)
+          const target = this.computeAutoRewindTarget(ct, rewindSec)
           if (target < ct) this.seek(target)
         }
+
         // 播放前清空暂停起点，避免重复累计
         this.pauseStartedAt = null
       }
@@ -459,19 +593,27 @@ export default class PlayerHandler {
     if (!this.player) return
     if (!this.playerPlaying) {
       if (this.autoRewindEnabled) {
+        // const ct = this.getCurrentTime() || 0
+        // const chapterStart = this.ctx.currentChapter?.start ?? 0
+        // let rewindSec = 0
+        // if (this.rewindMode === 'smart') {
+        //   rewindSec = this.computeSmartRewindSeconds()
+        // } else {
+        //   rewindSec = Math.max(0, this.autoRewindSeconds)
+        // }
+        // if (rewindSec > 0) {
+        //   const EPS = 0.01
+        //   const target = Math.max(chapterStart + EPS, ct - rewindSec)
+        //   if (target < ct) this.seek(target)
+        // }
+
         const ct = this.getCurrentTime() || 0
-        const chapterStart = this.ctx.currentChapter?.start ?? 0
-        let rewindSec = 0
-        if (this.rewindMode === 'smart') {
-          rewindSec = this.computeSmartRewindSeconds()
-        } else {
-          rewindSec = Math.max(0, this.autoRewindSeconds)
-        }
+        const rewindSec = this.rewindMode === 'smart' ? this.computeSmartRewindSeconds() : Math.max(0, this.autoRewindSeconds)
         if (rewindSec > 0) {
-          const EPS = 0.01
-          const target = Math.max(chapterStart + EPS, ct - rewindSec)
+          const target = this.computeAutoRewindTarget(ct, rewindSec)
           if (target < ct) this.seek(target)
         }
+
         this.pauseStartedAt = null
       }
     }

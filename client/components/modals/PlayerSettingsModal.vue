@@ -33,6 +33,27 @@
         <ui-select-input v-model="rewindMode" :label="$strings.LabelRewindMode || 'Rewind mode'" :items="rewindModeItems" :disabled="!autoRewindEnabled" @input="setRewindMode" />
       </div>
 
+      <!-- 新增：是否允许跨章节（若为 true，则不再强制“最多到本章起点”, 即可以跳回到前一个章节） -->
+      <div class="flex items-center mb-2">
+        <ui-toggle-switch v-model="clampToChapterStart" @input="setClampToChapterStart" />
+        <div class="pl-4">
+          <!-- Todo: 以后可以增加向上面的调用i18n多语言的写法，目前只用普通字符串 -->
+          <span>Limit rewind to current chapter start</span>
+        </div>
+      </div>
+
+      <!-- 新增：跨章节后的策略（仅在允许跨章时显示） -->
+      <div v-if="autoRewindEnabled && !clampToChapterStart" class="space-y-3 mb-4">
+        <ui-select-input v-model="crossChapterRewindStrategy" label="Cross-chapter rewind strategy" :items="crossChapterStrategyItems" :disabled="!autoRewindEnabled" @input="setCrossChapterRewindStrategy" />
+        <div class="flex items-center">
+          <ui-toggle-switch v-model="limitPresetToPrevTwoChapters" @input="setLimitPresetToPrevTwoChapters" />
+          <div class="pl-4">
+            <span>Restrict preset point within previous two chapters</span>
+          </div>
+        </div>
+        <p class="text-xs text-text/70 leading-snug">When cross-chapter rewind is enabled, choose the target: Fixed timestamp, Nearest boundary, Previous chapter start, or Next chapter start.</p>
+      </div>
+
       <!-- 新增：智能回退参数 -->
       <div class="grid grid-cols-2 gap-3 mb-4" v-if="autoRewindEnabled && rewindMode === 'smart'">
         <ui-number-input v-model="smartRewindStepSeconds" :label="$strings.LabelSmartRewindStep || 'Smart rewind step (sec)'" :min="1" :max="600" @input="setSmartRewindStepSeconds" />
@@ -79,6 +100,17 @@ export default {
       smartRewindMaxSeconds: 60,
       // smartRewindPerMinutes: 1,
       smartRewindTriggerSeconds: 5,
+
+      // 新增：本地状态（与 Vuex 同步）
+      clampToChapterStart: true,
+      crossChapterRewindStrategy: 'fixed',
+      limitPresetToPrevTwoChapters: true,
+      crossChapterStrategyItems: [
+        { text: 'Fixed (use preset point)', value: 'fixed' },
+        { text: 'Nearest boundary (prev/current start)', value: 'nearest-boundary' },
+        { text: 'Previous chapter start', value: 'prev-start' },
+        { text: 'Next chapter start', value: 'next-start' }
+      ],
 
       playbackRateIncrementDecrementValues: [0.1, 0.05],
       playbackRateIncrementDecrement: 0.1
@@ -143,6 +175,20 @@ export default {
       this.$store.dispatch('user/updateUserSettings', { smartRewindTriggerSeconds: this.smartRewindTriggerSeconds })
     },
 
+    // 新增：更新当前组件的数据，同步到Vuex Store
+    setClampToChapterStart(val) {
+      this.clampToChapterStart = !!val
+      this.$store.dispatch('user/updateUserSettings', { clampToChapterStart: this.clampToChapterStart })
+    },
+    setCrossChapterRewindStrategy(val) {
+      this.crossChapterRewindStrategy = val
+      this.$store.dispatch('user/updateUserSettings', { crossChapterRewindStrategy: this.crossChapterRewindStrategy })
+    },
+    setLimitPresetToPrevTwoChapters(val) {
+      this.limitPresetToPrevTwoChapters = !!val
+      this.$store.dispatch('user/updateUserSettings', { limitPresetToPrevTwoChapters: this.limitPresetToPrevTwoChapters })
+    },
+
     settingsUpdated() {
       this.useChapterTrack = this.$store.getters['user/getUserSetting']('useChapterTrack')
       this.jumpForwardAmount = this.$store.getters['user/getUserSetting']('jumpForwardAmount')
@@ -159,6 +205,11 @@ export default {
       this.smartRewindMaxSeconds = this.$store.getters['user/getUserSetting']('smartRewindMaxSeconds') ?? 60
       // this.smartRewindPerMinutes = this.$store.getters['user/getUserSetting']('smartRewindPerMinutes') ?? 1
       this.smartRewindTriggerSeconds = this.$store.getters['user/getUserSetting']('smartRewindTriggerSeconds') ?? 5
+
+      // 新增：从 Vuex 读取
+      this.clampToChapterStart = this.$store.getters['user/getUserSetting']('clampToChapterStart') ?? true
+      this.crossChapterRewindStrategy = this.$store.getters['user/getUserSetting']('crossChapterRewindStrategy') || 'fixed'
+      this.limitPresetToPrevTwoChapters = this.$store.getters['user/getUserSetting']('limitPresetToPrevTwoChapters') ?? true
     }
   },
   mounted() {

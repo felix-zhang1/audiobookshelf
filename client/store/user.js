@@ -33,7 +33,19 @@ export const state = () => ({
 
     // smartRewindPerMinutes: 1, // 每多少分钟计算一次步长（默认每 1 分钟）
 
-    smartRewindTriggerSeconds: 5 // 每“停这么多秒”算一步（默认 5 秒）
+    smartRewindTriggerSeconds: 5, // 每“停这么多秒”算一步（默认 5 秒）
+
+    // 新增：章节边界与跨章节策略
+    // clampToChapterStart = true 表示“最大后退不超过本章起点”（即不跨章）
+    clampToChapterStart: true,
+
+    // 仅当允许跨章时生效：跨章后的“预定时间点策略”
+    // options: 'fixed' (default) 'nearest-boundary'  'prev-start'  'next-start'
+    crossChapterRewindStrategy: 'fixed',
+
+    // 仅当允许跨章时生效：将“预定回跳时间点”限制在“前两个章节区间”
+    // （把预定点 clamp 到 [prev2.start, current.start)）
+    limitPresetToPrevTwoChapters: true
   }
 })
 
@@ -56,9 +68,14 @@ export const getters = {
     if (!state.user?.bookmarks) return []
     return state.user.bookmarks.filter((bm) => bm.libraryItemId === libraryItemId)
   },
+
+  // getUserSetting: (state) => (key) => {
+  //   return state.settings?.[key] || null
+  // },
   getUserSetting: (state) => (key) => {
-    return state.settings?.[key] || null
+    return state.settings ? state.settings[key] : undefined
   },
+
   getUserCanUpdate: (state) => {
     return !!state.user?.permissions?.update
   },
